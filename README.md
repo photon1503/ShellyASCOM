@@ -14,7 +14,7 @@ ASCOM Switch driver for Shelly devices.
 
 ## Requirements
 
-- ASCOM Platform (version compatible with this project)
+- ASCOM Platform 6.2 or higher
 
 ## Configuration
 
