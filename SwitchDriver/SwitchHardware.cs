@@ -283,7 +283,7 @@ namespace ASCOM.photonShelly.Switch
         /// resources in a timely fashion and avoid any time delay between local server close down and garbage collection by the .NET runtime.
         ///
         /// For the same reason, do not call the SharedResources.Dispose() method from this method. Any resources used in the static shared resources class
-        /// itself should be released in the SharedResources.Dispose() method as usual. The SharedResources.Dispose() method will be called automatically
+        /// itself should be released in the SharedResources.Dispose() method as usunabl. The SharedResources.Dispose() method will be called automatically
         /// by the local server just before it shuts down.
         ///
         /// </remarks>
@@ -570,17 +570,25 @@ namespace ASCOM.photonShelly.Switch
             if (IsShellyDeviceId(id))
             {
                 var device = configuredDevices[id];
-                EnsureDeviceApiDetected(device);
+                try
+                {
+                    EnsureDeviceApiDetected(device);
 
-                if (device.ApiGeneration == ShellyApiGeneration.Gen2)
-                {
-                    string response = SendRpcRequest(device.IpAddress, "Switch.GetStatus?id=0");
-                    state = ParseOutputState(response);
+                    if (device.ApiGeneration == ShellyApiGeneration.Gen2)
+                    {
+                        string response = SendRpcRequest(device.IpAddress, "Switch.GetStatus?id=0");
+                        state = ParseOutputState(response);
+                    }
+                    else
+                    {
+                        string response = SendHttpRequest(device.IpAddress, "/relay/0");
+                        state = ParseIsOnState(response);
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    string response = SendHttpRequest(device.IpAddress, "/relay/0");
-                    state = ParseIsOnState(response);
+                    LogMessage("GetSwitch", $"Shelly {device.IpAddress} appears offline, returning false. Exception: {ex.Message}");
+                    state = false;
                 }
             }
             else
@@ -894,7 +902,9 @@ namespace ASCOM.photonShelly.Switch
                 {
                     FriendlyName = d.FriendlyName?.Trim(),
                     IpAddress = NormalizeHost(d.IpAddress),
-                    ApiGeneration = DetectApiGeneration(NormalizeHost(d.IpAddress))
+                        ApiGeneration = Enum.IsDefined(typeof(ShellyApiGeneration), d.ApiGeneration)
+                            ? d.ApiGeneration
+                            : ShellyApiGeneration.Unknown
                 });
 
                 configuredProbeDevices = probeDevices.ConvertAll(d => new NetworkProbeDeviceConfig
@@ -907,6 +917,19 @@ namespace ASCOM.photonShelly.Switch
                 });
 
                 numSwitch = (short)(configuredDevices.Count + configuredProbeDevices.Count);
+            }
+        }
+
+        private static ShellyApiGeneration DetectApiGenerationSafe(string ipAddress)
+        {
+            try
+            {
+                return DetectApiGeneration(ipAddress);
+            }
+            catch (Exception ex)
+            {
+                LogMessage("DetectApiGenerationSafe", $"Could not detect API for {ipAddress} during setup; storing as Unknown. Exception: {ex.Message}");
+                return ShellyApiGeneration.Unknown;
             }
         }
 
@@ -1192,8 +1215,8 @@ namespace ASCOM.photonShelly.Switch
             {
                 var request = (HttpWebRequest)WebRequest.Create(requestUri);
                 request.Method = "GET";
-                request.Timeout = 5000;
-                request.ReadWriteTimeout = 5000;
+                request.Timeout = 3000;
+                request.ReadWriteTimeout = 3000;
 
                 using (var response = (HttpWebResponse)request.GetResponse())
                 using (var responseStream = response.GetResponseStream())
