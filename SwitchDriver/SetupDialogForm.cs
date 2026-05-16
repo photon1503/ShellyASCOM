@@ -193,5 +193,9 @@ namespace ASCOM.photonShelly.Switch
             }
         }
 
+        private void label3_Click(object sender, EventArgs e)
+        {
+
+        }
     }
 }

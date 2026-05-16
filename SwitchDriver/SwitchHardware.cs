@@ -43,6 +43,7 @@ namespace ASCOM.photonShelly.Switch
     {
         // Constants used for Profile persistence
         internal const string comPortProfileName = "COM Port";
+
         internal const string comPortDefault = "COM1";
         internal const string traceStateProfileName = "Trace Level";
         internal const string traceStateDefault = "true";
@@ -274,17 +275,17 @@ namespace ASCOM.photonShelly.Switch
         /// </summary>
         /// <remarks>
         /// TODO: Release any managed or unmanaged resources that are used in this class.
-        /// 
+        ///
         /// Do not call this method from the Dispose method in your driver class.
         ///
-        /// This is because this hardware class is decorated with the <see cref="HardwareClassAttribute"/> attribute and this Dispose() method will be called 
-        /// automatically by the  local server executable when it is irretrievably shutting down. This gives you the opportunity to release managed and unmanaged 
+        /// This is because this hardware class is decorated with the <see cref="HardwareClassAttribute"/> attribute and this Dispose() method will be called
+        /// automatically by the  local server executable when it is irretrievably shutting down. This gives you the opportunity to release managed and unmanaged
         /// resources in a timely fashion and avoid any time delay between local server close down and garbage collection by the .NET runtime.
         ///
         /// For the same reason, do not call the SharedResources.Dispose() method from this method. Any resources used in the static shared resources class
-        /// itself should be released in the SharedResources.Dispose() method as usual. The SharedResources.Dispose() method will be called automatically 
+        /// itself should be released in the SharedResources.Dispose() method as usual. The SharedResources.Dispose() method will be called automatically
         /// by the local server just before it shuts down.
-        /// 
+        ///
         /// </remarks>
         public static void Dispose()
         {
@@ -365,7 +366,7 @@ namespace ASCOM.photonShelly.Switch
                     uniqueIds.Remove(uniqueId);
                     LogMessage("SetConnected", $"Unique id {uniqueId} removed from the connection list.");
 
-                    // Check whether there are now any connected driver instances 
+                    // Check whether there are now any connected driver instances
                     if (uniqueIds.Count == 0) // There are no connected driver instances so disconnect from the hardware
                     {
                         //
@@ -458,7 +459,7 @@ namespace ASCOM.photonShelly.Switch
             }
         }
 
-        #endregion
+        #endregion Common properties and methods.
 
         #region ISwitch Implementation
 
@@ -526,12 +527,12 @@ namespace ASCOM.photonShelly.Switch
             if (IsShellyDeviceId(id))
             {
                 var device = configuredDevices[id];
-                description = $"Shelly device {device.FriendlyName} ({device.IpAddress})";
+                description = $"Shelly {device.FriendlyName}";
             }
             else
             {
                 var device = configuredProbeDevices[id - configuredDevices.Count];
-                description = $"Network probe {device.FriendlyName} ({device.IpAddress}), interval {device.IntervalSeconds}s";
+                description = $"Network {device.FriendlyName}";
             }
 
             LogMessage("GetSwitchDescription", description);
@@ -622,7 +623,7 @@ namespace ASCOM.photonShelly.Switch
             LogMessage("SetSwitch", $"SetSwitch({id}) = {state}");
         }
 
-        #endregion
+        #endregion Boolean switch members
 
         #region Analogue members
 
@@ -687,7 +688,7 @@ namespace ASCOM.photonShelly.Switch
             SetSwitch(id, value >= 0.5);
         }
 
-        #endregion
+        #endregion Analogue members
 
         #region Async members
 
@@ -793,9 +794,9 @@ namespace ASCOM.photonShelly.Switch
             throw new MethodNotImplementedException("CancelAsync");
         }
 
-        #endregion
+        #endregion Async members
 
-        #endregion
+        #endregion ISwitch Implementation
 
         #region Private methods
 
@@ -832,9 +833,10 @@ namespace ASCOM.photonShelly.Switch
             }
         }
 
-        #endregion
+        #endregion Private methods
 
         #region Private properties and methods
+
         // Useful methods that can be used as required to help with driver development
 
         /// <summary>
@@ -1186,7 +1188,6 @@ namespace ASCOM.photonShelly.Switch
 
         private static string SendRequest(string requestUri, string normalizedHost)
         {
-
             try
             {
                 var request = (HttpWebRequest)WebRequest.Create(requestUri);
@@ -1294,7 +1295,7 @@ namespace ASCOM.photonShelly.Switch
             var msg = string.Format(message, args);
             LogMessage(identifier, msg);
         }
-        #endregion
+
+        #endregion Private properties and methods
     }
 }
-
