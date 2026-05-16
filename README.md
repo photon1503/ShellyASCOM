@@ -5,9 +5,12 @@ ASCOM Switch driver for Shelly devices.
 ## Features
 
 - Supports multiple Shelly devices in one driver instance.
+- Supports additional read-only network probe devices (sensors) in one driver instance.
 - Supports **Shelly Gen1** and **Shelly Gen2** switch APIs.
 - Automatically detects API generation per device and stores it in ASCOM Profile.
 - Controls switch state (read/write) for relay channel `0`.
+
+![alt text](image-1.png)
 
 ## Requirements
 
@@ -15,7 +18,13 @@ ASCOM Switch driver for Shelly devices.
 
 ## Configuration
 
-Open the ASCOM driver setup dialog and add one device per line:
+Open the ASCOM driver setup dialog and configure devices in both lists.
+
+![alt text](image.png)
+
+### Shelly Switches
+
+Add one Shelly switch per line:
 
 `FriendlyName,IPAddress`
 
@@ -25,10 +34,24 @@ Example:
 
 `Power Strip,192.168.1.41`
 
+### Network Devices (Sensors / Probes)
+
+Add one network probe per line:
+
+`FriendlyName,IPAddress,IntervalSeconds`
+
+Examples:
+
+`Roof Sensor,192.168.1.60,30`
+
+`Weather Station,192.168.1.61,10`
+
 Notes:
 
-- At least one device is required.
+- At least one Shelly switch or network probe is required.
 - Friendly name can be empty (IP will be used as display name).
+- Network probes are read-only and report online/offline state using ICMP ping.
+- `IntervalSeconds` must be a positive integer.
 
 ## Supported Devices
 
@@ -54,9 +77,16 @@ Based on the vendor API documentation, supported device families include:
 
 - Shelly Gen2/Gen3/Plus/Pro devices that provide the **Switch** component on channel `0`.
 
+### Network Devices (Sensors / Probes)
+
+- Any network-reachable device that responds to ICMP ping.
+- Intended for read-only presence/availability sensors represented as switch values:
+	- `1` = reachable
+	- `0` = unreachable
+
 Notes:
 
-- Sensor-only devices (e.g., motion, smoke, flood, door/window, etc.) are not switch devices and are not supported by this ASCOM Switch driver.
+- Sensor-only Shelly devices (e.g., motion, smoke, flood, door/window, etc.) are not controllable Shelly switch channels, but can be added as network probe sensors if they respond to ping.
 - Multi-channel devices are currently controlled through channel `0`.
 
 ## ASCOM Conformance
