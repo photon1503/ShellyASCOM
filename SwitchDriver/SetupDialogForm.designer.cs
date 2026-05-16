@@ -35,7 +35,7 @@ namespace ASCOM.photonShelly.Switch
             this.picASCOM = new System.Windows.Forms.PictureBox();
             this.label2 = new System.Windows.Forms.Label();
             this.chkTrace = new System.Windows.Forms.CheckBox();
-            this.comboBoxComPort = new System.Windows.Forms.ComboBox();
+            this.txtDevices = new System.Windows.Forms.TextBox();
             ((System.ComponentModel.ISupportInitialize)(this.picASCOM)).BeginInit();
             this.SuspendLayout();
             // 
@@ -67,9 +67,9 @@ namespace ASCOM.photonShelly.Switch
             // 
             this.label1.Location = new System.Drawing.Point(12, 9);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(123, 31);
+            this.label1.Size = new System.Drawing.Size(268, 31);
             this.label1.TabIndex = 2;
-            this.label1.Text = "Construct your driver\'s setup dialog here.";
+            this.label1.Text = "Configure Shelly Gen2 devices, one per line: FriendlyName,IPAddress";
             // 
             // picASCOM
             // 
@@ -88,36 +88,37 @@ namespace ASCOM.photonShelly.Switch
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(13, 90);
+            this.label2.Location = new System.Drawing.Point(13, 50);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(58, 13);
+            this.label2.Size = new System.Drawing.Size(132, 13);
             this.label2.TabIndex = 5;
-            this.label2.Text = "Comm Port";
+            this.label2.Text = "FriendlyName, IP Address";
             // 
             // chkTrace
             // 
             this.chkTrace.AutoSize = true;
-            this.chkTrace.Location = new System.Drawing.Point(77, 118);
+            this.chkTrace.Location = new System.Drawing.Point(16, 144);
             this.chkTrace.Name = "chkTrace";
             this.chkTrace.Size = new System.Drawing.Size(69, 17);
             this.chkTrace.TabIndex = 6;
             this.chkTrace.Text = "Trace on";
             this.chkTrace.UseVisualStyleBackColor = true;
             // 
-            // comboBoxComPort
+            // txtDevices
             // 
-            this.comboBoxComPort.FormattingEnabled = true;
-            this.comboBoxComPort.Location = new System.Drawing.Point(77, 87);
-            this.comboBoxComPort.Name = "comboBoxComPort";
-            this.comboBoxComPort.Size = new System.Drawing.Size(133, 21);
-            this.comboBoxComPort.TabIndex = 7;
+            this.txtDevices.Location = new System.Drawing.Point(16, 66);
+            this.txtDevices.Multiline = true;
+            this.txtDevices.Name = "txtDevices";
+            this.txtDevices.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
+            this.txtDevices.Size = new System.Drawing.Size(259, 72);
+            this.txtDevices.TabIndex = 7;
             // 
             // SetupDialogForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(350, 175);
-            this.Controls.Add(this.comboBoxComPort);
+            this.Controls.Add(this.txtDevices);
             this.Controls.Add(this.chkTrace);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.picASCOM);
@@ -146,6 +147,6 @@ namespace ASCOM.photonShelly.Switch
         private System.Windows.Forms.PictureBox picASCOM;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.CheckBox chkTrace;
-        private System.Windows.Forms.ComboBox comboBoxComPort;
+        private System.Windows.Forms.TextBox txtDevices;
     }
 }

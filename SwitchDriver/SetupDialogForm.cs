@@ -1,6 +1,8 @@
 using ASCOM.Utilities;
 using System;
 using System.ComponentModel;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -9,7 +11,6 @@ namespace ASCOM.photonShelly.Switch
     [ComVisible(false)] // Form not registered for COM!
     public partial class SetupDialogForm : Form
     {
-        const string NO_PORTS_MESSAGE = "No COM ports found";
         TraceLogger tl; // Holder for a reference to the driver's trace logger
 
         public SetupDialogForm(TraceLogger tlDriver)
@@ -29,19 +30,23 @@ namespace ASCOM.photonShelly.Switch
 
             tl.Enabled = chkTrace.Checked;
 
-            // Update the COM port variable if one has been selected
-            if (comboBoxComPort.SelectedItem is null) // No COM port selected
+            try
             {
-                tl.LogMessage("Setup OK", $"New configuration values - COM Port: Not selected");
+                var devices = ParseDevices();
+                if (devices.Count == 0)
+                {
+                    MessageBox.Show("Please configure at least one Shelly device.", "Shelly Setup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    DialogResult = DialogResult.None;
+                    return;
+                }
+
+                SwitchHardware.SetConfiguredDevices(devices);
+                tl.LogMessage("Setup OK", $"Configured {devices.Count} Shelly devices.");
             }
-            else if (comboBoxComPort.SelectedItem.ToString() == NO_PORTS_MESSAGE)
+            catch (Exception ex)
             {
-                tl.LogMessage("Setup OK", $"New configuration values - NO COM ports detected on this PC.");
-            }
-            else // A valid COM port has been selected
-            {
-                SwitchHardware.comPort = (string)comboBoxComPort.SelectedItem;
-                tl.LogMessage("Setup OK", $"New configuration values - COM Port: {comboBoxComPort.SelectedItem}");
+                MessageBox.Show(ex.Message, "Invalid device configuration", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                DialogResult = DialogResult.None;
             }
         }
 
@@ -69,31 +74,55 @@ namespace ASCOM.photonShelly.Switch
 
         private void InitUI()
         {
-
             // Set the trace checkbox
             chkTrace.Checked = tl.Enabled;
 
-            // set the list of COM ports to those that are currently available
-            comboBoxComPort.Items.Clear(); // Clear any existing entries
-            using (Serial serial = new Serial()) // User the Se5rial component to get an extended list of COM ports
+            var devices = SwitchHardware.GetConfiguredDevicesSnapshot();
+            txtDevices.Lines = devices.Select(d => $"{d.FriendlyName},{d.IpAddress}").ToArray();
+
+            tl.LogMessage("InitUI", $"Set UI controls to Trace: {chkTrace.Checked}, Devices: {devices.Count}");
+        }
+
+        private List<SwitchHardware.ShellyDeviceConfig> ParseDevices()
+        {
+            var result = new List<SwitchHardware.ShellyDeviceConfig>();
+            var lines = txtDevices.Lines ?? new string[0];
+
+            for (int i = 0; i < lines.Length; i++)
             {
-                comboBoxComPort.Items.AddRange(serial.AvailableCOMPorts);
+                string line = lines[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                string[] parts = line.Split(new[] { ',' }, 2);
+                if (parts.Length != 2)
+                {
+                    throw new ArgumentException($"Line {i + 1} must be in the format FriendlyName,IPAddress.");
+                }
+
+                string friendlyName = parts[0].Trim();
+                string ip = parts[1].Trim();
+
+                if (string.IsNullOrWhiteSpace(ip))
+                {
+                    throw new ArgumentException($"Line {i + 1} has an empty IP address.");
+                }
+
+                if (string.IsNullOrWhiteSpace(friendlyName))
+                {
+                    friendlyName = ip;
+                }
+
+                result.Add(new SwitchHardware.ShellyDeviceConfig
+                {
+                    FriendlyName = friendlyName,
+                    IpAddress = ip
+                });
             }
 
-            // If no ports are found include a message to this effect
-            if (comboBoxComPort.Items.Count == 0)
-            {
-                comboBoxComPort.Items.Add(NO_PORTS_MESSAGE);
-                comboBoxComPort.SelectedItem = NO_PORTS_MESSAGE;
-            }
-
-            // select the current port if possible
-            if (comboBoxComPort.Items.Contains(SwitchHardware.comPort))
-            {
-                comboBoxComPort.SelectedItem = SwitchHardware.comPort;
-            }
-
-            tl.LogMessage("InitUI", $"Set UI controls to Trace: {chkTrace.Checked}, COM Port: {comboBoxComPort.SelectedItem}");
+            return result;
         }
 
         private void SetupDialogForm_Load(object sender, EventArgs e)

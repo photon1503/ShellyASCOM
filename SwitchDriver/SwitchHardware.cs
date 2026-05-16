@@ -48,6 +48,7 @@ namespace ASCOM.photonShelly.Switch
         internal const string deviceCountProfileName = "DeviceCount";
         internal const string deviceNamePrefix = "DeviceName";
         internal const string deviceIpPrefix = "DeviceIp";
+        internal const string deviceApiPrefix = "DeviceApi";
 
         private static string DriverProgId = ""; // ASCOM DeviceID (COM ProgID) for this driver, the value is set by the driver's class initialiser.
         private static string DriverDescription = ""; // The value is set by the driver's class initialiser.
@@ -65,6 +66,14 @@ namespace ASCOM.photonShelly.Switch
         {
             internal string FriendlyName { get; set; }
             internal string IpAddress { get; set; }
+            internal ShellyApiGeneration ApiGeneration { get; set; }
+        }
+
+        internal enum ShellyApiGeneration
+        {
+            Unknown = 0,
+            Gen1 = 1,
+            Gen2 = 2
         }
 
         private static List<ShellyDeviceConfig> configuredDevices = new List<ShellyDeviceConfig>();
@@ -490,7 +499,7 @@ namespace ASCOM.photonShelly.Switch
         {
             Validate("GetSwitchDescription", id);
             var device = configuredDevices[id];
-            string description = $"Shelly Gen2 device {device.FriendlyName} ({device.IpAddress})";
+            string description = $"{device.FriendlyName}";
             LogMessage("GetSwitchDescription", description);
             return description;
         }
@@ -523,8 +532,20 @@ namespace ASCOM.photonShelly.Switch
         {
             Validate("GetSwitch", id);
             var device = configuredDevices[id];
-            string response = SendRpcRequest(device.IpAddress, "Switch.GetStatus?id=0");
-            bool state = ParseOutputState(response);
+            EnsureDeviceApiDetected(device);
+
+            bool state;
+            if (device.ApiGeneration == ShellyApiGeneration.Gen2)
+            {
+                string response = SendRpcRequest(device.IpAddress, "Switch.GetStatus?id=0");
+                state = ParseOutputState(response);
+            }
+            else
+            {
+                string response = SendHttpRequest(device.IpAddress, "/relay/0");
+                state = ParseIsOnState(response);
+            }
+
             LogMessage("GetSwitch", $"GetSwitch({id}) = {state}");
             return state;
         }
@@ -544,7 +565,18 @@ namespace ASCOM.photonShelly.Switch
                 throw new MethodNotImplementedException(str);
             }
             var device = configuredDevices[id];
-            SendRpcRequest(device.IpAddress, $"Switch.Set?id=0&on={state.ToString().ToLowerInvariant()}");
+            EnsureDeviceApiDetected(device);
+
+            if (device.ApiGeneration == ShellyApiGeneration.Gen2)
+            {
+                SendRpcRequest(device.IpAddress, $"Switch.Set?id=0&on={state.ToString().ToLowerInvariant()}");
+            }
+            else
+            {
+                string turn = state ? "on" : "off";
+                SendHttpRequest(device.IpAddress, $"/relay/0?turn={turn}");
+            }
+
             LogMessage("SetSwitch", $"SetSwitch({id}) = {state}");
         }
 
@@ -794,7 +826,8 @@ namespace ASCOM.photonShelly.Switch
                 configuredDevices = devices.ConvertAll(d => new ShellyDeviceConfig
                 {
                     FriendlyName = d.FriendlyName?.Trim(),
-                    IpAddress = NormalizeHost(d.IpAddress)
+                    IpAddress = NormalizeHost(d.IpAddress),
+                    ApiGeneration = DetectApiGeneration(NormalizeHost(d.IpAddress))
                 });
 
                 numSwitch = (short)configuredDevices.Count;
@@ -834,13 +867,16 @@ namespace ASCOM.photonShelly.Switch
                     {
                         string ip = NormalizeHost(driverProfile.GetValue(DriverProgId, deviceIpPrefix + i, string.Empty, string.Empty));
                         string friendlyName = driverProfile.GetValue(DriverProgId, deviceNamePrefix + i, string.Empty, string.Empty);
+                        int apiGeneration;
+                        int.TryParse(driverProfile.GetValue(DriverProgId, deviceApiPrefix + i, string.Empty, "0"), out apiGeneration);
 
                         if (!string.IsNullOrWhiteSpace(ip))
                         {
                             configuredDevices.Add(new ShellyDeviceConfig
                             {
                                 IpAddress = ip,
-                                FriendlyName = string.IsNullOrWhiteSpace(friendlyName) ? ip : friendlyName.Trim()
+                                FriendlyName = string.IsNullOrWhiteSpace(friendlyName) ? ip : friendlyName.Trim(),
+                                ApiGeneration = Enum.IsDefined(typeof(ShellyApiGeneration), apiGeneration) ? (ShellyApiGeneration)apiGeneration : ShellyApiGeneration.Unknown
                             });
                         }
                     }
@@ -872,15 +908,99 @@ namespace ASCOM.photonShelly.Switch
                     {
                         driverProfile.WriteValue(DriverProgId, deviceNamePrefix + i, configuredDevices[i].FriendlyName ?? string.Empty);
                         driverProfile.WriteValue(DriverProgId, deviceIpPrefix + i, configuredDevices[i].IpAddress ?? string.Empty);
+                        driverProfile.WriteValue(DriverProgId, deviceApiPrefix + i, ((int)configuredDevices[i].ApiGeneration).ToString());
                     }
 
                     for (int i = configuredDevices.Count; i < previousCount; i++)
                     {
                         driverProfile.WriteValue(DriverProgId, deviceNamePrefix + i, string.Empty);
                         driverProfile.WriteValue(DriverProgId, deviceIpPrefix + i, string.Empty);
+                        driverProfile.WriteValue(DriverProgId, deviceApiPrefix + i, string.Empty);
                     }
                 }
             }
+        }
+
+        private static void EnsureDeviceApiDetected(ShellyDeviceConfig device)
+        {
+            if (device.ApiGeneration != ShellyApiGeneration.Unknown)
+            {
+                return;
+            }
+
+            device.ApiGeneration = DetectApiGeneration(device.IpAddress);
+            WriteProfile();
+        }
+
+        private static ShellyApiGeneration DetectApiGeneration(string ipAddress)
+        {
+            string normalizedHost = NormalizeHost(ipAddress);
+
+            try
+            {
+                string shellyInfo = SendHttpRequest(normalizedHost, "/shelly");
+                ShellyApiGeneration generation = ParseGenerationFromShellyInfo(shellyInfo);
+                if (generation != ShellyApiGeneration.Unknown)
+                {
+                    return generation;
+                }
+            }
+            catch
+            {
+                // Fall back to endpoint probing below.
+            }
+
+            try
+            {
+                string gen2Response = SendRpcRequest(normalizedHost, "Switch.GetStatus?id=0");
+                ParseOutputState(gen2Response);
+                return ShellyApiGeneration.Gen2;
+            }
+            catch
+            {
+                try
+                {
+                    string gen1Response = SendHttpRequest(normalizedHost, "/relay/0");
+                    ParseIsOnState(gen1Response);
+                    return ShellyApiGeneration.Gen1;
+                }
+                catch (Exception ex)
+                {
+                    throw new DriverException($"Unable to detect Shelly API generation for {normalizedHost}. Expected Gen1 /relay/0 or Gen2 /rpc/Switch.GetStatus?id=0.", ex);
+                }
+            }
+        }
+
+        private static ShellyApiGeneration ParseGenerationFromShellyInfo(string json)
+        {
+            string marker = "\"gen\":";
+            int markerIndex = json.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0)
+            {
+                // Gen1 /shelly payloads usually don't have "gen".
+                return ShellyApiGeneration.Gen1;
+            }
+
+            int valueIndex = markerIndex + marker.Length;
+            while (valueIndex < json.Length && char.IsWhiteSpace(json[valueIndex]))
+            {
+                valueIndex++;
+            }
+
+            int endIndex = valueIndex;
+            while (endIndex < json.Length && char.IsDigit(json[endIndex]))
+            {
+                endIndex++;
+            }
+
+            int parsedGen;
+            if (int.TryParse(json.Substring(valueIndex, endIndex - valueIndex), out parsedGen))
+            {
+                if (parsedGen <= 1) return ShellyApiGeneration.Gen1;
+                if (parsedGen >= 2) return ShellyApiGeneration.Gen2;
+            }
+
+            return ShellyApiGeneration.Unknown;
         }
 
         private static string NormalizeHost(string host)
@@ -905,6 +1025,20 @@ namespace ASCOM.photonShelly.Switch
         {
             string normalizedHost = NormalizeHost(ipAddress);
             string requestUri = $"http://{normalizedHost}/rpc/{rpcPathAndQuery}";
+
+            return SendRequest(requestUri, normalizedHost);
+        }
+
+        private static string SendHttpRequest(string ipAddress, string relativePathAndQuery)
+        {
+            string normalizedHost = NormalizeHost(ipAddress);
+            string requestUri = $"http://{normalizedHost}{relativePathAndQuery}";
+
+            return SendRequest(requestUri, normalizedHost);
+        }
+
+        private static string SendRequest(string requestUri, string normalizedHost)
+        {
 
             try
             {
@@ -932,7 +1066,7 @@ namespace ASCOM.photonShelly.Switch
                     }
                 }
 
-                throw new DriverException($"Shelly RPC request failed for {normalizedHost}: {message}", ex);
+                throw new DriverException($"Shelly request failed for {normalizedHost}: {message}", ex);
             }
         }
 
@@ -962,6 +1096,34 @@ namespace ASCOM.photonShelly.Switch
             }
 
             throw new DriverException($"Unable to parse output state from Shelly response: {json}");
+        }
+
+        private static bool ParseIsOnState(string json)
+        {
+            string marker = "\"ison\":";
+            int markerIndex = json.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0)
+            {
+                throw new DriverException($"Shelly response did not contain an ison value: {json}");
+            }
+
+            int valueIndex = markerIndex + marker.Length;
+            while (valueIndex < json.Length && char.IsWhiteSpace(json[valueIndex]))
+            {
+                valueIndex++;
+            }
+
+            if (json.IndexOf("true", valueIndex, StringComparison.OrdinalIgnoreCase) == valueIndex)
+            {
+                return true;
+            }
+
+            if (json.IndexOf("false", valueIndex, StringComparison.OrdinalIgnoreCase) == valueIndex)
+            {
+                return false;
+            }
+
+            throw new DriverException($"Unable to parse ison state from Shelly response: {json}");
         }
 
         /// <summary>

@@ -37,7 +37,7 @@ namespace ASCOM.photonShelly.Switch
     [ComVisible(true)]
     [Guid("25bd67f5-785d-4207-8d40-6937b01a5f13")]
     [ProgId("ASCOM.photonShelly.Switch")]
-    [ServedClassName("ASCOM Switch Driver for photonShelly")] // Driver description that appears in the Chooser, customise as required
+    [ServedClassName("Shelly Switches by photon")] // Driver description that appears in the Chooser, customise as required
     [ClassInterface(ClassInterfaceType.None)]
     public class Switch : ReferenceCountedObjectBase, ISwitchV3, IDisposable
     {
