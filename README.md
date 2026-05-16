@@ -59,6 +59,10 @@ Notes:
 - Sensor-only devices (e.g., motion, smoke, flood, door/window, etc.) are not switch devices and are not supported by this ASCOM Switch driver.
 - Multi-channel devices are currently controlled through channel `0`.
 
+## ASCOM Conformance
+
+Test passed with ASCOM Conformance Checker version, see protocol logs for details.
+
 ## API Endpoints Used
 
 ### Gen2

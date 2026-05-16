@@ -69,7 +69,8 @@ namespace ASCOM.photonShelly.Switch
             this.label1.Name = "label1";
             this.label1.Size = new System.Drawing.Size(268, 31);
             this.label1.TabIndex = 2;
-            this.label1.Text = "Configure Shelly Gen2 devices, one per line: FriendlyName,IPAddress";
+            this.label1.Text = "Configure Shelly devices, one per line: FriendlyName,IPAddress";
+            this.label1.Click += new System.EventHandler(this.label1_Click);
             // 
             // picASCOM
             // 
@@ -90,7 +91,7 @@ namespace ASCOM.photonShelly.Switch
             this.label2.AutoSize = true;
             this.label2.Location = new System.Drawing.Point(13, 50);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(132, 13);
+            this.label2.Size = new System.Drawing.Size(128, 13);
             this.label2.TabIndex = 5;
             this.label2.Text = "FriendlyName, IP Address";
             // 
