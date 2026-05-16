@@ -33,15 +33,17 @@ namespace ASCOM.photonShelly.Switch
             try
             {
                 var devices = ParseDevices();
-                if (devices.Count == 0)
+                var probeDevices = ParseProbeDevices();
+
+                if (devices.Count == 0 && probeDevices.Count == 0)
                 {
-                    MessageBox.Show("Please configure at least one Shelly device.", "Shelly Setup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("Please configure at least one Shelly device or network probe.", "Shelly Setup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     DialogResult = DialogResult.None;
                     return;
                 }
 
-                SwitchHardware.SetConfiguredDevices(devices);
-                tl.LogMessage("Setup OK", $"Configured {devices.Count} Shelly devices.");
+                SwitchHardware.SetConfiguredDevices(devices, probeDevices);
+                tl.LogMessage("Setup OK", $"Configured {devices.Count} Shelly devices and {probeDevices.Count} network probes.");
             }
             catch (Exception ex)
             {
@@ -80,7 +82,10 @@ namespace ASCOM.photonShelly.Switch
             var devices = SwitchHardware.GetConfiguredDevicesSnapshot();
             txtDevices.Lines = devices.Select(d => $"{d.FriendlyName},{d.IpAddress}").ToArray();
 
-            tl.LogMessage("InitUI", $"Set UI controls to Trace: {chkTrace.Checked}, Devices: {devices.Count}");
+            var probeDevices = SwitchHardware.GetConfiguredProbeDevicesSnapshot();
+            txtProbeDevices.Lines = probeDevices.Select(d => $"{d.FriendlyName},{d.IpAddress},{d.IntervalSeconds}").ToArray();
+
+            tl.LogMessage("InitUI", $"Set UI controls to Trace: {chkTrace.Checked}, Shelly devices: {devices.Count}, Probe devices: {probeDevices.Count}");
         }
 
         private List<SwitchHardware.ShellyDeviceConfig> ParseDevices()
@@ -125,6 +130,55 @@ namespace ASCOM.photonShelly.Switch
             return result;
         }
 
+        private List<SwitchHardware.NetworkProbeDeviceConfig> ParseProbeDevices()
+        {
+            var result = new List<SwitchHardware.NetworkProbeDeviceConfig>();
+            var lines = txtProbeDevices.Lines ?? new string[0];
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                string[] parts = line.Split(',');
+                if (parts.Length != 3)
+                {
+                    throw new ArgumentException($"Probe line {i + 1} must be in the format FriendlyName,IPAddress,IntervalSeconds.");
+                }
+
+                string friendlyName = parts[0].Trim();
+                string ip = parts[1].Trim();
+                int intervalSeconds;
+
+                if (string.IsNullOrWhiteSpace(ip))
+                {
+                    throw new ArgumentException($"Probe line {i + 1} has an empty IP address.");
+                }
+
+                if (!int.TryParse(parts[2].Trim(), out intervalSeconds) || intervalSeconds <= 0)
+                {
+                    throw new ArgumentException($"Probe line {i + 1} has an invalid interval (must be a positive integer in seconds).");
+                }
+
+                if (string.IsNullOrWhiteSpace(friendlyName))
+                {
+                    friendlyName = ip;
+                }
+
+                result.Add(new SwitchHardware.NetworkProbeDeviceConfig
+                {
+                    FriendlyName = friendlyName,
+                    IpAddress = ip,
+                    IntervalSeconds = intervalSeconds
+                });
+            }
+
+            return result;
+        }
+
         private void SetupDialogForm_Load(object sender, EventArgs e)
         {
             // Bring the setup dialogue to the front of the screen
@@ -139,9 +193,5 @@ namespace ASCOM.photonShelly.Switch
             }
         }
 
-        private void label1_Click(object sender, EventArgs e)
-        {
-
-        }
     }
 }

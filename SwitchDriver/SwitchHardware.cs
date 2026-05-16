@@ -20,6 +20,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -49,6 +50,10 @@ namespace ASCOM.photonShelly.Switch
         internal const string deviceNamePrefix = "DeviceName";
         internal const string deviceIpPrefix = "DeviceIp";
         internal const string deviceApiPrefix = "DeviceApi";
+        internal const string probeDeviceCountProfileName = "ProbeDeviceCount";
+        internal const string probeDeviceNamePrefix = "ProbeDeviceName";
+        internal const string probeDeviceIpPrefix = "ProbeDeviceIp";
+        internal const string probeDeviceIntervalPrefix = "ProbeDeviceInterval";
 
         private static string DriverProgId = ""; // ASCOM DeviceID (COM ProgID) for this driver, the value is set by the driver's class initialiser.
         private static string DriverDescription = ""; // The value is set by the driver's class initialiser.
@@ -69,6 +74,15 @@ namespace ASCOM.photonShelly.Switch
             internal ShellyApiGeneration ApiGeneration { get; set; }
         }
 
+        internal sealed class NetworkProbeDeviceConfig
+        {
+            internal string FriendlyName { get; set; }
+            internal string IpAddress { get; set; }
+            internal int IntervalSeconds { get; set; }
+            internal DateTime LastProbeUtc { get; set; }
+            internal bool LastProbeResult { get; set; }
+        }
+
         internal enum ShellyApiGeneration
         {
             Unknown = 0,
@@ -77,6 +91,7 @@ namespace ASCOM.photonShelly.Switch
         }
 
         private static List<ShellyDeviceConfig> configuredDevices = new List<ShellyDeviceConfig>();
+        private static List<NetworkProbeDeviceConfig> configuredProbeDevices = new List<NetworkProbeDeviceConfig>();
 
         /// <summary>
         /// Initializes a new instance of the device Hardware class.
@@ -134,7 +149,7 @@ namespace ASCOM.photonShelly.Switch
                 // Add your own "one off" device initialisation here e.g. validating existence of hardware and setting up communications
                 // If you are using a serial COM port you will find the COM port name selected by the user through the setup dialogue in the comPort variable.
 
-                numSwitch = (short)configuredDevices.Count;
+                numSwitch = (short)(configuredDevices.Count + configuredProbeDevices.Count);
 
                 LogMessage("InitialiseHardware", $"One-off initialisation complete.");
                 runOnce = true; // Set the flag to ensure that this code is not run again
@@ -470,7 +485,7 @@ namespace ASCOM.photonShelly.Switch
         internal static string GetSwitchName(short id)
         {
             Validate("GetSwitchName", id);
-            string name = configuredDevices[id].FriendlyName;
+            string name = IsShellyDeviceId(id) ? configuredDevices[id].FriendlyName : configuredProbeDevices[id - configuredDevices.Count].FriendlyName;
             LogMessage("GetSwitchName", $"GetSwitchName({id}) = {name}");
             return name;
         }
@@ -483,8 +498,17 @@ namespace ASCOM.photonShelly.Switch
         internal static void SetSwitchName(short id, string name)
         {
             Validate("SetSwitchName", id);
-            configuredDevices[id].FriendlyName = string.IsNullOrWhiteSpace(name) ? configuredDevices[id].IpAddress : name.Trim();
-            LogMessage("SetSwitchName", $"SetSwitchName({id}) = {configuredDevices[id].FriendlyName}");
+            if (IsShellyDeviceId(id))
+            {
+                configuredDevices[id].FriendlyName = string.IsNullOrWhiteSpace(name) ? configuredDevices[id].IpAddress : name.Trim();
+                LogMessage("SetSwitchName", $"SetSwitchName({id}) = {configuredDevices[id].FriendlyName}");
+            }
+            else
+            {
+                int probeIndex = id - configuredDevices.Count;
+                configuredProbeDevices[probeIndex].FriendlyName = string.IsNullOrWhiteSpace(name) ? configuredProbeDevices[probeIndex].IpAddress : name.Trim();
+                LogMessage("SetSwitchName", $"SetSwitchName({id}) = {configuredProbeDevices[probeIndex].FriendlyName}");
+            }
         }
 
         /// <summary>
@@ -498,8 +522,18 @@ namespace ASCOM.photonShelly.Switch
         internal static string GetSwitchDescription(short id)
         {
             Validate("GetSwitchDescription", id);
-            var device = configuredDevices[id];
-            string description = $"{device.FriendlyName}";
+            string description;
+            if (IsShellyDeviceId(id))
+            {
+                var device = configuredDevices[id];
+                description = $"Shelly device {device.FriendlyName} ({device.IpAddress})";
+            }
+            else
+            {
+                var device = configuredProbeDevices[id - configuredDevices.Count];
+                description = $"Network probe {device.FriendlyName} ({device.IpAddress}), interval {device.IntervalSeconds}s";
+            }
+
             LogMessage("GetSwitchDescription", description);
             return description;
         }
@@ -514,11 +548,11 @@ namespace ASCOM.photonShelly.Switch
         /// </returns>
         internal static bool CanWrite(short id)
         {
-            bool writable = true;
             Validate("CanWrite", id);
-            // default behavour is to report true
+
+            bool writable = IsShellyDeviceId(id);
             LogMessage("CanWrite", $"CanWrite({id}): {writable}");
-            return true;
+            return writable;
         }
 
         #region Boolean switch members
@@ -531,19 +565,27 @@ namespace ASCOM.photonShelly.Switch
         internal static bool GetSwitch(short id)
         {
             Validate("GetSwitch", id);
-            var device = configuredDevices[id];
-            EnsureDeviceApiDetected(device);
-
             bool state;
-            if (device.ApiGeneration == ShellyApiGeneration.Gen2)
+            if (IsShellyDeviceId(id))
             {
-                string response = SendRpcRequest(device.IpAddress, "Switch.GetStatus?id=0");
-                state = ParseOutputState(response);
+                var device = configuredDevices[id];
+                EnsureDeviceApiDetected(device);
+
+                if (device.ApiGeneration == ShellyApiGeneration.Gen2)
+                {
+                    string response = SendRpcRequest(device.IpAddress, "Switch.GetStatus?id=0");
+                    state = ParseOutputState(response);
+                }
+                else
+                {
+                    string response = SendHttpRequest(device.IpAddress, "/relay/0");
+                    state = ParseIsOnState(response);
+                }
             }
             else
             {
-                string response = SendHttpRequest(device.IpAddress, "/relay/0");
-                state = ParseIsOnState(response);
+                var probeDevice = configuredProbeDevices[id - configuredDevices.Count];
+                state = GetNetworkProbeState(probeDevice);
             }
 
             LogMessage("GetSwitch", $"GetSwitch({id}) = {state}");
@@ -562,7 +604,7 @@ namespace ASCOM.photonShelly.Switch
             {
                 var str = $"SetSwitch({id}) - Cannot Write";
                 LogMessage("SetSwitch", str);
-                throw new MethodNotImplementedException(str);
+                throw new InvalidOperationException(str);
             }
             var device = configuredDevices[id];
             EnsureDeviceApiDetected(device);
@@ -810,15 +852,38 @@ namespace ASCOM.photonShelly.Switch
         {
             lock (devicesLock)
             {
-                return configuredDevices.ConvertAll(d => new ShellyDeviceConfig { FriendlyName = d.FriendlyName, IpAddress = d.IpAddress });
+                return configuredDevices.ConvertAll(d => new ShellyDeviceConfig { FriendlyName = d.FriendlyName, IpAddress = d.IpAddress, ApiGeneration = d.ApiGeneration });
+            }
+        }
+
+        internal static List<NetworkProbeDeviceConfig> GetConfiguredProbeDevicesSnapshot()
+        {
+            lock (devicesLock)
+            {
+                return configuredProbeDevices.ConvertAll(d => new NetworkProbeDeviceConfig
+                {
+                    FriendlyName = d.FriendlyName,
+                    IpAddress = d.IpAddress,
+                    IntervalSeconds = d.IntervalSeconds
+                });
             }
         }
 
         internal static void SetConfiguredDevices(List<ShellyDeviceConfig> devices)
         {
+            SetConfiguredDevices(devices, new List<NetworkProbeDeviceConfig>());
+        }
+
+        internal static void SetConfiguredDevices(List<ShellyDeviceConfig> devices, List<NetworkProbeDeviceConfig> probeDevices)
+        {
             if (devices == null)
             {
                 throw new ArgumentNullException(nameof(devices));
+            }
+
+            if (probeDevices == null)
+            {
+                throw new ArgumentNullException(nameof(probeDevices));
             }
 
             lock (devicesLock)
@@ -830,7 +895,16 @@ namespace ASCOM.photonShelly.Switch
                     ApiGeneration = DetectApiGeneration(NormalizeHost(d.IpAddress))
                 });
 
-                numSwitch = (short)configuredDevices.Count;
+                configuredProbeDevices = probeDevices.ConvertAll(d => new NetworkProbeDeviceConfig
+                {
+                    FriendlyName = d.FriendlyName?.Trim(),
+                    IpAddress = NormalizeHost(d.IpAddress),
+                    IntervalSeconds = Math.Max(1, d.IntervalSeconds),
+                    LastProbeUtc = DateTime.MinValue,
+                    LastProbeResult = false
+                });
+
+                numSwitch = (short)(configuredDevices.Count + configuredProbeDevices.Count);
             }
         }
 
@@ -859,10 +933,13 @@ namespace ASCOM.photonShelly.Switch
 
                 int deviceCount = 0;
                 int.TryParse(driverProfile.GetValue(DriverProgId, deviceCountProfileName, string.Empty, "0"), out deviceCount);
+                int probeDeviceCount = 0;
+                int.TryParse(driverProfile.GetValue(DriverProgId, probeDeviceCountProfileName, string.Empty, "0"), out probeDeviceCount);
 
                 lock (devicesLock)
                 {
                     configuredDevices.Clear();
+                    configuredProbeDevices.Clear();
                     for (int i = 0; i < deviceCount; i++)
                     {
                         string ip = NormalizeHost(driverProfile.GetValue(DriverProgId, deviceIpPrefix + i, string.Empty, string.Empty));
@@ -881,7 +958,27 @@ namespace ASCOM.photonShelly.Switch
                         }
                     }
 
-                    numSwitch = (short)configuredDevices.Count;
+                    for (int i = 0; i < probeDeviceCount; i++)
+                    {
+                        string ip = NormalizeHost(driverProfile.GetValue(DriverProgId, probeDeviceIpPrefix + i, string.Empty, string.Empty));
+                        string friendlyName = driverProfile.GetValue(DriverProgId, probeDeviceNamePrefix + i, string.Empty, string.Empty);
+                        int intervalSeconds;
+                        int.TryParse(driverProfile.GetValue(DriverProgId, probeDeviceIntervalPrefix + i, string.Empty, "30"), out intervalSeconds);
+
+                        if (!string.IsNullOrWhiteSpace(ip))
+                        {
+                            configuredProbeDevices.Add(new NetworkProbeDeviceConfig
+                            {
+                                IpAddress = ip,
+                                FriendlyName = string.IsNullOrWhiteSpace(friendlyName) ? ip : friendlyName.Trim(),
+                                IntervalSeconds = Math.Max(1, intervalSeconds),
+                                LastProbeUtc = DateTime.MinValue,
+                                LastProbeResult = false
+                            });
+                        }
+                    }
+
+                    numSwitch = (short)(configuredDevices.Count + configuredProbeDevices.Count);
                 }
             }
         }
@@ -899,10 +996,13 @@ namespace ASCOM.photonShelly.Switch
 
                 int previousCount = 0;
                 int.TryParse(driverProfile.GetValue(DriverProgId, deviceCountProfileName, string.Empty, "0"), out previousCount);
+                int previousProbeCount = 0;
+                int.TryParse(driverProfile.GetValue(DriverProgId, probeDeviceCountProfileName, string.Empty, "0"), out previousProbeCount);
 
                 lock (devicesLock)
                 {
                     driverProfile.WriteValue(DriverProgId, deviceCountProfileName, configuredDevices.Count.ToString());
+                    driverProfile.WriteValue(DriverProgId, probeDeviceCountProfileName, configuredProbeDevices.Count.ToString());
 
                     for (int i = 0; i < configuredDevices.Count; i++)
                     {
@@ -917,7 +1017,54 @@ namespace ASCOM.photonShelly.Switch
                         driverProfile.WriteValue(DriverProgId, deviceIpPrefix + i, string.Empty);
                         driverProfile.WriteValue(DriverProgId, deviceApiPrefix + i, string.Empty);
                     }
+
+                    for (int i = 0; i < configuredProbeDevices.Count; i++)
+                    {
+                        driverProfile.WriteValue(DriverProgId, probeDeviceNamePrefix + i, configuredProbeDevices[i].FriendlyName ?? string.Empty);
+                        driverProfile.WriteValue(DriverProgId, probeDeviceIpPrefix + i, configuredProbeDevices[i].IpAddress ?? string.Empty);
+                        driverProfile.WriteValue(DriverProgId, probeDeviceIntervalPrefix + i, configuredProbeDevices[i].IntervalSeconds.ToString());
+                    }
+
+                    for (int i = configuredProbeDevices.Count; i < previousProbeCount; i++)
+                    {
+                        driverProfile.WriteValue(DriverProgId, probeDeviceNamePrefix + i, string.Empty);
+                        driverProfile.WriteValue(DriverProgId, probeDeviceIpPrefix + i, string.Empty);
+                        driverProfile.WriteValue(DriverProgId, probeDeviceIntervalPrefix + i, string.Empty);
+                    }
                 }
+            }
+        }
+
+        private static bool IsShellyDeviceId(short id)
+        {
+            return id < configuredDevices.Count;
+        }
+
+        private static bool GetNetworkProbeState(NetworkProbeDeviceConfig device)
+        {
+            var elapsed = DateTime.UtcNow - device.LastProbeUtc;
+            if (device.LastProbeUtc == DateTime.MinValue || elapsed.TotalSeconds >= device.IntervalSeconds)
+            {
+                device.LastProbeResult = PingHost(device.IpAddress);
+                device.LastProbeUtc = DateTime.UtcNow;
+            }
+
+            return device.LastProbeResult;
+        }
+
+        private static bool PingHost(string ipAddress)
+        {
+            try
+            {
+                using (var ping = new Ping())
+                {
+                    var reply = ping.Send(ipAddress, 2000);
+                    return reply != null && reply.Status == IPStatus.Success;
+                }
+            }
+            catch
+            {
+                return false;
             }
         }
 

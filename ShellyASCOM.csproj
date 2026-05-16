@@ -102,6 +102,7 @@
   <ItemGroup>
     <None Include="app.config" />
     <None Include="LocalServer.snk" />
+    <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
