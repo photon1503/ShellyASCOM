@@ -11,7 +11,6 @@ ASCOM Switch driver for Shelly devices.
 
 ## Requirements
 
-- Windows with .NET Framework 4.7.2 runtime
 - ASCOM Platform (version compatible with this project)
 
 ## Configuration
@@ -30,6 +29,35 @@ Notes:
 
 - At least one device is required.
 - Friendly name can be empty (IP will be used as display name).
+
+## Supported Devices
+
+This driver supports Shelly devices that expose a **switch/relay channel 0** via:
+
+- Gen1: `/relay/0`
+- Gen2+: `Switch.GetStatus` / `Switch.Set` for `id=0`
+
+Based on the vendor API documentation, supported device families include:
+
+### Gen1 (relay/switch-capable families)
+
+- Shelly 1 / 1PM
+- Shelly 1L
+- Shelly 2 / 2.5 (relay mode)
+- Shelly 4Pro
+- Shelly Plug / PlugS
+- Shelly Uni
+- Shelly EM
+- Shelly 3EM
+
+### Gen2+
+
+- Shelly Gen2/Gen3/Plus/Pro devices that provide the **Switch** component on channel `0`.
+
+Notes:
+
+- Sensor-only devices (e.g., motion, smoke, flood, door/window, etc.) are not switch devices and are not supported by this ASCOM Switch driver.
+- Multi-channel devices are currently controlled through channel `0`.
 
 ## API Endpoints Used
 
