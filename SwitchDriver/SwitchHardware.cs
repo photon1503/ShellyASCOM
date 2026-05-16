@@ -902,7 +902,7 @@ namespace ASCOM.photonShelly.Switch
                 {
                     FriendlyName = d.FriendlyName?.Trim(),
                     IpAddress = NormalizeHost(d.IpAddress),
-                        ApiGeneration = Enum.IsDefined(typeof(ShellyApiGeneration), d.ApiGeneration)
+                    ApiGeneration = Enum.IsDefined(typeof(ShellyApiGeneration), d.ApiGeneration)
                             ? d.ApiGeneration
                             : ShellyApiGeneration.Unknown
                 });
@@ -1100,7 +1100,14 @@ namespace ASCOM.photonShelly.Switch
                 return;
             }
 
-            device.ApiGeneration = DetectApiGeneration(device.IpAddress);
+            var detectedGeneration = DetectApiGenerationSafe(device.IpAddress);
+            if (detectedGeneration == ShellyApiGeneration.Unknown)
+            {
+                LogMessage("EnsureDeviceApiDetected", $"Shelly {device.IpAddress} appears offline; leaving API generation unknown.");
+                return;
+            }
+
+            device.ApiGeneration = detectedGeneration;
             WriteProfile();
         }
 
